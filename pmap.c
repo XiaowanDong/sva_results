@@ -203,6 +203,8 @@ u_int64_t		KPML4phys;	/* phys addr of kernel level 4 */
 static u_int64_t	DMPDphys;	/* phys addr of direct mapped level 2 */
 static u_int64_t	DMPDPphys;	/* phys addr of direct mapped level 3 */
 
+static u_int64_t 	DMPTphys;       //xdong
+
 /*
  * Data for the pv entry allocation mechanism
  */
@@ -477,6 +479,8 @@ create_pagetables(vm_paddr_t *firstaddr)
 		DMPDphys = allocpages(firstaddr, ndmpdp - ndm1g);
 	dmaplimit = (vm_paddr_t)ndmpdp << PDPSHIFT;
 
+	DMPTphys = allocpages(firstaddr, NPDEPG * ndmpdp); //xdong
+
 	/* Fill in the underlying page table pages */
 	/* Read-only from zero to physfree */
 	/* XXX not fully used, underneath 2M pages */
@@ -513,12 +517,27 @@ create_pagetables(vm_paddr_t *firstaddr)
 	 * memory, pmap_change_attr() will demote any 2MB or 1GB page mappings
 	 * that are partially used. 
 	 */
-	for (i = NPDEPG * ndm1g, j = 0; i < NPDEPG * ndmpdp; i++, j++) {
-		((pd_entry_t *)DMPDphys)[j] = (vm_paddr_t)i << PDRSHIFT;
-		/* Preset PG_M and PG_A because demotion expects it. */
-		((pd_entry_t *)DMPDphys)[j] |= PG_RW | PG_V | PG_PS | PG_G |
-		    PG_M | PG_A;
+	
+	//xdong ->
+
+
+        for (i = 0; i < NPTEPG * NPDEPG * ndmpdp; i++) {
+		((pt_entry_t *)DMPTphys)[i] = i << PAGE_SHIFT;
+		((pt_entry_t *)DMPTphys)[i] |= PG_RW | PG_V | PG_G;
 	}
+
+	for (i = NPDEPG * ndm1g, j = 0; i < NPDEPG * ndmpdp; i++, j++) {
+		((pd_entry_t *)DMPDphys)[j] = DMPTphys + (vm_paddr_t)j << PAGE_SHIFT;
+		//((pd_entry_t *)DMPDphys)[j] = (vm_paddr_t)i << PDRSHIFT;
+		/* Preset PG_M and PG_A because demotion expects it. */
+		((pd_entry_t *)DMPDphys)[j] |= PG_RW | PG_V 
+			| PG_U;
+		//	| PG_PS | PG_G |
+		//    PG_M | PG_A;
+	}
+
+	//xdong <-
+	
 	for (i = 0; i < ndm1g; i++) {
 		((pdp_entry_t *)DMPDPphys)[i] = (vm_paddr_t)i << PDPSHIFT;
 		/* Preset PG_M and PG_A because demotion expects it. */
